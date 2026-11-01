@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (getUserRole() == 'super_admin' || getUserRole() == 'admin');
+    }
+
+    // Public Collections (Read-only for all passengers)
+    match /stations/{stationId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /operators/{operatorId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /buses/{busId} {
+      allow read: if true;
+      allow write: if isAdmin() || getUserRole() == 'operator_admin';
+    }
+    
+    match /routes/{routeId} {
+      allow read: if true;
+      allow write: if isAdmin() || getUserRole() == 'operator_admin';
+    }
+    
+    match /trips/{tripId} {
+      allow read: if true;
+      allow write: if isAdmin() || getUserRole() == 'operator_admin';
+    }
+    
+    match /seat_holds/{holdId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // User Profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    // Bookings & Tickets
+    match /bookings/{bookingId} {
+      allow read: if isOwner(resource.data.customer_id) || isAdmin() || getUserRole() == 'counter_staff' || getUserRole() == 'counter_manager';
+      allow create: if true;
+      allow update: if isOwner(resource.data.customer_id) || isAdmin() || getUserRole() == 'counter_staff';
+    }
+
+    // Counter Shifts & Cash Balancing
+    match /staff_shifts/{shiftId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}
